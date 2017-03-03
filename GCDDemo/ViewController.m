@@ -43,7 +43,7 @@
      
      */
     //1.创建串行队列
-    dispatch_queue_t serialQueue = dispatch_queue_create("名字", DISPATCH_QUEUE_SERIAL);
+    dispatch_queue_t serialQueue = dispatch_queue_create("唯一标识符", DISPATCH_QUEUE_SERIAL);
     
     //2.创建并发队列
     dispatch_queue_t concurrentQueue = dispatch_queue_create("concurrentQueue", DISPATCH_QUEUE_CONCURRENT);
@@ -86,18 +86,38 @@
     //主队列
 //    [self mainQueue];
     
-    dispatch_queue_t queue = dispatch_queue_create("test", DISPATCH_QUEUE_CONCURRENT);
-//
-    dispatch_async(queue, ^{
-//        [self mainQueue];
-//        [self mainQueueSync];
-    });
+//    dispatch_queue_t queue = dispatch_queue_create("test", DISPATCH_QUEUE_CONCURRENT);
+////
+//    //异步执行任务
+//    dispatch_async(queue, ^{
+//        NSLog(@"%@", [NSThread currentThread]);//这里防止任务代码
+//    });
+//    //同步执行任务
+//    dispatch_sync(queue, ^{
+//        NSLog(@"%@", [NSThread currentThread]);//这里防止任务代码
+//    });
     
     //主队列 + 异步执行
 //    [self mainQueueAsync];
     
     //线程之间的通讯
-    [self threadCommunication];
+//    [self threadCommunication];
+    
+    //栅栏
+//    [self barrierAsync];
+    
+    
+    //延时
+//    [self dispatchAfter];
+    
+    //快速迭代
+//    [self dispatchApply];
+    
+    //队列组
+//    [self dispatchGroup];
+    
+    
+    [self globalQueue];
 }
 
 #pragma mark - 并发队列 + 同步执行
@@ -370,31 +390,187 @@
      */
     
 }
+#pragma mark - 栅栏
+/**
+ 当我们异步执行多组操作的时候，有的时候会需要当第一组的操作执行完毕之后再执行第二组异步操作，这时候我们就需要一个相当于栅栏一样的方法将这几组操作分割开来，这里的操作组可以分为一个或者多个任务
+ 使用dispatch_barrier_async函数形成栅栏
+ */
+- (void)barrierAsync {
+    dispatch_queue_t queue = dispatch_queue_create("", DISPATCH_QUEUE_CONCURRENT);
+    
+    dispatch_async(queue, ^{
+        NSLog(@"1---------- %@",[NSThread currentThread]);
+    });
+    
+    dispatch_async(queue, ^{
+        NSLog(@"2---------- %@",[NSThread currentThread]);
+    });
+    
+    dispatch_barrier_async(queue, ^{
+        NSLog(@"barrier ---------- %@",[NSThread currentThread]);
+    });
+    
+    dispatch_async(queue, ^{
+        NSLog(@"3---------- %@",[NSThread currentThread]);
+    });
+    dispatch_async(queue, ^{
+        NSLog(@"4---------- %@",[NSThread currentThread]);
+    });
+    
+    /**
+     2---------- <NSThread: 0x600000071880>{number = 3, name = (null)}
+     1---------- <NSThread: 0x61800006e0c0>{number = 4, name = (null)}
+     barrier ---------- <NSThread: 0x61800006e0c0>{number = 4, name = (null)}
+     3---------- <NSThread: 0x61800006e0c0>{number = 4, name = (null)}
+     4---------- <NSThread: 0x600000071880>{number = 3, name = (null)}
+     
+     >> 可以看出 总是在执行完栅栏前面的操作之后才开始执行栅栏的操作，然后在执行栅栏之后的操作
+     */
+}
+#pragma mark - GCD延时
+- (void)dispatchAfter {
+    NSLog(@"bengin ---------- %@",[NSThread currentThread]);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        
+        NSLog(@"1 ---------- %@",[NSThread currentThread]);
+    });
+    
+    NSLog(@"end ---------- %@",[NSThread currentThread]);
+    
+    /** 输出信息
+     
+     2017-03-03 13:16:37.316 GCDDemo[1037:77501] bengin ---------- <NSThread: 0x610000076600>{number = 1, name = main}
+     2017-03-03 13:16:37.316 GCDDemo[1037:77501] end ---------- <NSThread: 0x610000076600>{number = 1, name = main}
+     2017-03-03 13:16:42.316 GCDDemo[1037:77501] 1 ---------- <NSThread: 0x610000076600>{number = 1, name = main}
+     
+     */
+}
+#pragma mark - 快速迭代
+/**
+ 通常我们会用for循环遍历，但是GCD给我们提供了快速迭代的方法dispatch_apply，使我们可以同时遍历。比如说遍历0~5这6个数字，for循环的做法是每次取出一个元素，逐个遍历。dispatch_apply可以同时遍历多个数字。
+ */
+- (void)dispatchApply {
+    
+    dispatch_queue_t queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+    
+    for (int i = 0; i < 5; i++) {
+        NSLog(@" for循环 %d------%@",i, [NSThread currentThread]);
+    }
+    
+    dispatch_apply(5, queue, ^(size_t index) {
+        NSLog(@"Apply -- %zd------%@",index, [NSThread currentThread]);
+    });
+    
+    /**
+     
+     2017-03-03 13:25:03.836 GCDDemo[1113:82201] Apply -- 1------<NSThread: 0x618000077400>{number = 3, name = (null)}
+     2017-03-03 13:25:03.836 GCDDemo[1113:82148] Apply -- 0------<NSThread: 0x600000073d80>{number = 1, name = main}
+     2017-03-03 13:25:03.836 GCDDemo[1113:82209] Apply -- 2------<NSThread: 0x60000007bf80>{number = 4, name = (null)}
+     2017-03-03 13:25:03.836 GCDDemo[1113:82200] Apply -- 3------<NSThread: 0x6180000781c0>{number = 5, name = (null)}
+     2017-03-03 13:25:03.836 GCDDemo[1113:82148] Apply -- 5------<NSThread: 0x600000073d80>{number = 1, name = main}
+     2017-03-03 13:25:03.836 GCDDemo[1113:82201] Apply -- 4------<NSThread: 0x618000077400>{number = 3, name = (null)}
+     2017-03-03 13:25:03.836 GCDDemo[1113:82148]  for循环 0------<NSThread: 0x600000073d80>{number = 1, name = main}
+     2017-03-03 13:25:03.836 GCDDemo[1113:82148]  for循环 1------<NSThread: 0x600000073d80>{number = 1, name = main}
+     2017-03-03 13:25:03.836 GCDDemo[1113:82148]  for循环 2------<NSThread: 0x600000073d80>{number = 1, name = main}
+     2017-03-03 13:25:03.836 GCDDemo[1113:82148]  for循环 3------<NSThread: 0x600000073d80>{number = 1, name = main}
+     2017-03-03 13:25:03.836 GCDDemo[1113:82148]  for循环 4------<NSThread: 0x600000073d80>{number = 1, name = main}
+     2017-03-03 13:25:03.837 GCDDemo[1113:82148]  for循环 5------<NSThread: 0x600000073d80>{number = 1, name = main}
 
-- (void)testGlobalQueue {
-    NSLog(@"当前的线程是 --  %@", [NSThread currentThread]);
-    /** 打印为
-     <NSThread: 0x6180000775c0>{number = 3, name = (null)}
+     
+     >> 从输出结果中前边的时间中可以看出，apply几乎是同时遍历的,for循环的话要比apply稍慢一些，如果循环次数再大一些的话会更明显， for循环是在当前线程顺序的执行，而apply会开启新的线程同时执行，所以for循环是有顺序的，apply是没有顺序的
+     */
+   
+}
+
+#pragma mark - 队列组
+/**
+ 有的时候我们需要分别执行多个异步操作，等所有的异步操作都执行完毕之后再回到主线程执行操作，这时候我们可以使用队列组
+ 
+ 1.先把任务放到队列中，然后把队列放到队列组中
+ 2.然后调用dispatch_group_notify 进行回到主线程操作
+ 
+ */
+- (void)dispatchGroup {
+    // 1.创建队列组
+    dispatch_group_t group = dispatch_group_create();
+    // 2.获得全局队列
+    // 第一个参数是设置队列的优先级，这里设置为default，第二个参数暂时没用到，可以先写作0
+    dispatch_queue_t queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+    
+    NSLog(@" begin -----------  %@", [NSThread currentThread]);
+    dispatch_group_async(group, queue, ^{
+        NSLog(@" 1 -----------  %@", [NSThread currentThread]);
+    });
+    dispatch_group_async(group, queue, ^{
+        NSLog(@" 2 -----------  %@", [NSThread currentThread]);
+    });
+    
+    dispatch_group_async(group, queue, ^{
+        NSLog(@" 3 -----------  %@", [NSThread currentThread]);
+    });
+    dispatch_group_async(group, queue, ^{
+        NSLog(@" 4 -----------  %@", [NSThread currentThread]);
+    });
+    dispatch_group_notify(group, queue, ^{
+        NSLog(@" 最后的任务 -----------  %@", [NSThread currentThread]);
+        dispatch_async(dispatch_get_main_queue(), ^{//回到主线程
+            NSLog(@"回到主线程进行操作 --- %@", [NSThread currentThread]);
+        });
+    });
+    
+    NSLog(@" end  -----------  %@", [NSThread currentThread]);
+    
+    /** 打印信息为
+     begin -----------  <NSThread: 0x618000068ac0>{number = 1, name = main}
+     end  -----------  <NSThread: 0x618000068ac0>{number = 1, name = main}
+     1 -----------  <NSThread: 0x60000006d5c0>{number = 3, name = (null)}
+     2 -----------  <NSThread: 0x61800006f5c0>{number = 4, name = (null)}
+     4 -----------  <NSThread: 0x60000006d580>{number = 6, name = (null)}
+     3 -----------  <NSThread: 0x61000006d080>{number = 5, name = (null)}
+     最后的任务 -----------  <NSThread: 0x61000006d080>{number = 5, name = (null)}
+     回到主线程进行操作 --- <NSThread: 0x618000068ac0>{number = 1, name = main}
+     
+     >>.可以看到前面的四个任务的执行时没有顺序的， 但总是在四个任务执行之后才会执行dispatch_group_notify的代码
+     */
+}
+#pragma mark -全局队列
+//GCD默认已经提供了全局的并发队列供整个应用使用，所以可以不用手动创建。
+- (void)globalQueue {
+    NSLog(@"begin --  %@", [NSThread currentThread]);
+    //
+    /**
+     dispatch_get_global_queue需要两个参数(long identifier, unsigned long flags)
+     long identifier可以理解为队列任务的优先级
+     unsigned long flags：苹果官方文档是这样解释的： Flags that are reserved for future use。标记是为了未来使用保留的！所以这个参数应该永远指定为0
      */
     dispatch_queue_t globalQueue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+    dispatch_async(globalQueue, ^{
+        NSLog(@"异步函数 任务1 -- %@", [NSThread currentThread]);
+    });
     
     dispatch_async(globalQueue, ^{
-        NSLog(@"异步函数 任务1 -- 线程为： %@", [NSThread currentThread]);
-        /** 打印信息
-         异步函数 任务1 -- 线程为： <NSThread: 0x618000077ac0>{number = 4, name = (null)}
-         */
+        NSLog(@"异步函数 任务2 --  %@", [NSThread currentThread]);
+    });
+    dispatch_async(globalQueue, ^{
+        NSLog(@"异步函数 任务3 --  %@", [NSThread currentThread]);
+    });
+    dispatch_async(globalQueue, ^{
+        NSLog(@"异步函数 任务4 --  %@", [NSThread currentThread]);
     });
     
-    dispatch_sync(globalQueue, ^{
-        NSLog(@"同步函数 任务2 -- 线程为： %@", [NSThread currentThread]);
-        /** 打印的信息
-         同步函数 任务2 -- 线程为： <NSThread: 0x6180000775c0>{number = 3, name = (null)}
-         
-         >>可以看到 同步函数并没有开启新的线程 是在当前线程里执行任务
-         */
-    });
+    NSLog(@"end --  %@", [NSThread currentThread]);
     
-    
+    /**
+     2017-03-03 14:47:31.840 GCDDemo[1408:120406] begin --  <NSThread: 0x61800007cd00>{number = 1, name = main}
+     2017-03-03 14:47:31.840 GCDDemo[1408:120406] end --  <NSThread: 0x61800007cd00>{number = 1, name = main}
+     2017-03-03 14:47:31.841 GCDDemo[1408:120450] 异步函数 任务2 --  <NSThread: 0x61000007ffc0>{number = 4, name = (null)}
+     2017-03-03 14:47:31.841 GCDDemo[1408:120457] 异步函数 任务3 --  <NSThread: 0x610000260080>{number = 5, name = (null)}
+     2017-03-03 14:47:31.841 GCDDemo[1408:120468] 异步函数 任务4 --  <NSThread: 0x6180002666c0>{number = 6, name = (null)}
+     2017-03-03 14:47:31.841 GCDDemo[1408:120458] 异步函数 任务1 -- <NSThread: 0x618000266a00>{number = 3, name = (null)}
+
+     * 由于是异步执行，所以开启了新的线程，且是把所有的任务都添加到队列中之后才开始执行
+     * 任务执行是没有顺序的，可以看出全局队列也是并发队列，（串行队列的任务无论是异步执行还是同步执行都是有顺序的）
+     */
 }
 
 @end
