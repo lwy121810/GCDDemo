@@ -7,7 +7,6 @@
 //
 
 #import "ViewController.h"
-#import "WYNetTool.h"
 
 @interface ViewController ()
 
