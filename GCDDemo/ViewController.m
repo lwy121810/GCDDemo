@@ -29,10 +29,35 @@
  
  2. 串行队列(Serial Dispatch Queue):让任务一个接一个的执行（一个任务执行完毕后再执行下一个任务）
  */
+
+
+
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     // Do any additional setup after loading the view, typically from a nib.
     
+    
+    /**
+     
+     |                  | 是否开启新线程     |	任务执行顺序|	任务执行时间|
+     | 并发队列+ 同步执行  | 在当前线程执行任务	 | 顺序执行（执行完一个任务再执行下一个任务）|	马上执行|
+     | 并发队列 + 异步执行 | 开启新线程执行任务	 | 交替执行	|所有任务都添加到队列之后才开始执行|
+     | 串行队列+ 同步执行  |	在当前线程执行任务  |	顺序执行	|马上执行|
+     | 串行队列 + 异步执行 |	开启新线程执行（只开启一个新线程）|	顺序执行	|所有任务添加到队列之后才开始执行|
+     | 主队列+同步执行     |在主线程执行       |	顺序执行|	马上执行|
+     
+     | 主队列+异步执行     |在主线程执行       |	顺序执行|	所有任务添加之后再执行|
+     
+     主队列+同步执行（必须在其他线程调用，不能在主线程调用）
+     */
+    
+    
+    
+    
+    
+    
+
 //    [self mainQueue];
 //    [self performSelectorInBackground:@selector(test) withObject:nil];
     
@@ -116,7 +141,9 @@
 //    [self dispatchGroup];
     
     
-    [self globalQueue];
+//    [self globalQueue];
+    
+    [self groupEnterAndLeave];
 }
 
 #pragma mark - 并发队列 + 同步执行
@@ -496,6 +523,8 @@
     // 第一个参数是设置队列的优先级，这里设置为default，第二个参数暂时没用到，可以先写作0
     dispatch_queue_t queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
     
+    dispatch_group_enter(group);
+    
     NSLog(@" begin -----------  %@", [NSThread currentThread]);
     dispatch_group_async(group, queue, ^{
         NSLog(@" 1 -----------  %@", [NSThread currentThread]);
@@ -510,6 +539,7 @@
     dispatch_group_async(group, queue, ^{
         NSLog(@" 4 -----------  %@", [NSThread currentThread]);
     });
+    //c
     dispatch_group_notify(group, queue, ^{
         NSLog(@" 最后的任务 -----------  %@", [NSThread currentThread]);
         dispatch_async(dispatch_get_main_queue(), ^{//回到主线程
@@ -532,6 +562,82 @@
      >>.可以看到前面的四个任务的执行时没有顺序的， 但总是在四个任务执行之后才会执行dispatch_group_notify的代码
      */
 }
+
+- (void)groupEnterAndLeave {
+    /**
+     dispatch_enter的作用：创建好任务组后，执行加入任务组的操作代码。dispatch_enter和dispatch_leave要成对出现，否则奔溃。
+     
+     */
+    // 1.创建队列组
+    dispatch_group_t group = dispatch_group_create();
+    // 2.获得全局队列
+    // 第一个参数是设置队列的优先级，这里设置为default，第二个参数暂时没用到，可以先写作0
+    dispatch_queue_t queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+    
+    NSLog(@" begin -----------  %@", [NSThread currentThread]);
+    //进入组
+    dispatch_group_enter(group);
+    dispatch_async(queue, ^{
+        NSLog(@"任务  1 -----------  %@", [NSThread currentThread]);
+        //离开组
+        dispatch_group_leave(group);
+    });
+    
+    //进入组
+    dispatch_group_enter(group);
+    dispatch_async(queue, ^{
+        NSLog(@"任务  2 -----------  %@", [NSThread currentThread]);
+        //离开组
+        dispatch_group_leave(group);
+    });
+    //进入组
+    dispatch_group_enter(group);
+    dispatch_async(queue, ^{
+        NSLog(@"任务  3 -----------  %@", [NSThread currentThread]);
+        //离开组
+        dispatch_group_leave(group);
+    });
+    
+    /* 因为队列queue里所有的任务执行完毕之后才会执行`dispatch_group_notify`里的代码块 所以即使dispatch_group_notify放在任务 4 前面，也是先执行任务 4的代码 在执行这里的代码 不过为了好看，还是把dispatch_group_notify放在任务 4 后面
+    dispatch_group_notify(group, queue, ^{
+        NSLog(@" 最后的任务 -----------  %@", [NSThread currentThread]);
+        dispatch_async(dispatch_get_main_queue(), ^{//回到主线程
+            NSLog(@"回到主线程进行操作 --- %@", [NSThread currentThread]);
+        });
+    });
+    */
+    //进入组
+    dispatch_group_enter(group);
+    dispatch_async(queue, ^{
+        NSLog(@"任务  4 -----------  %@", [NSThread currentThread]);
+        //离开组
+        dispatch_group_leave(group);
+    });
+    
+    
+    dispatch_group_notify(group, queue, ^{
+        NSLog(@" 最后的任务 -----------  %@", [NSThread currentThread]);
+        dispatch_async(dispatch_get_main_queue(), ^{//回到主线程
+            NSLog(@"回到主线程进行操作 --- %@", [NSThread currentThread]);
+        });
+    });
+    
+    
+    NSLog(@" end  -----------  %@", [NSThread currentThread]);
+    
+    /**
+     begin -----------  <NSThread: 0x618000077b00>{number = 1, name = main}
+     end  -----------  <NSThread: 0x618000077b00>{number = 1, name = main}
+     任务  1 -----------  <NSThread: 0x61800007fbc0>{number = 3, name = (null)}
+     任务  2 -----------  <NSThread: 0x600000076540>{number = 4, name = (null)}
+     任务  3 -----------  <NSThread: 0x608000077fc0>{number = 5, name = (null)}
+     任务  4 -----------  <NSThread: 0x61800007fb80>{number = 6, name = (null)}
+     最后的任务 -----------  <NSThread: 0x61800007fb80>{number = 6, name = (null)}
+     回到主线程进行操作 --- <NSThread: 0x618000077b00>{number = 1, name = main}
+     */
+    
+}
+
 #pragma mark -全局队列
 //GCD默认已经提供了全局的并发队列供整个应用使用，所以可以不用手动创建。
 - (void)globalQueue {
